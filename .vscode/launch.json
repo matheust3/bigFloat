@@ -5,7 +5,7 @@
             "name": "(gdb) Launch",
             "type": "cppdbg",
             "request": "launch",
-            "program": "${workspaceRoot}/teste.run",
+            "program": "${workspaceRoot}/bigfloat.run",
             "args": [],
             "stopAtEntry": false,
             "cwd": "${workspaceRoot}",
