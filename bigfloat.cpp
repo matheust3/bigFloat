@@ -9,7 +9,7 @@
 class bigFloat
 {
   public:
-    unsigned char _byte[512];
+    unsigned char _byte[514];
     //Construtor
     bigFloat()
     {
@@ -19,7 +19,7 @@ class bigFloat
     //Construtor int
     bigFloat(int value)
     {
-        for (int i = 0; i < 512; i++)
+        for (int i = 0; i < 514; i++)
             _byte[i] = 0;
         int count = 0;
         for (char i = 0; i < 4; i++) //Para cada byte do int
@@ -37,7 +37,7 @@ class bigFloat
     }
     bigFloat(const char *value)
     {
-        for (int i = 0; i < 512; i++)
+        for (int i = 0; i < 514; i++)
             _byte[i] = 0;
         unsigned long long int count = 0;
         unsigned long long int strLen = strlen(value) - 1;
@@ -45,12 +45,28 @@ class bigFloat
         {
             if (value[strLen - count] == '.')
             {
+
+                int iCount = 0;
+                int value = count;
+                for (int i = 512; i < 514; i++)
+                {
+                    for (char j = 0; j < 8; j++)
+                    {
+                        int mask = 1 << iCount;
+                        mask = mask >> ((i * 8) - 4096);
+                        value = value >> ((i * 8) - 4096);
+                        int masked_n = value & mask;
+                        _byte[i] = _byte[i] | masked_n;
+                        iCount++;
+                    }
+                }
                 count++;
                 continue;
             }
             else if (value[strLen - count] == '-')
             {
                 count++;
+                this->_negative = true;
                 continue;
             }
             int c;
@@ -112,6 +128,9 @@ class bigFloat
         }
         this->_negative = a->_negative;
     }
+    bigFloat operator/(const bigFloat &a) const
+    {
+    }
     bigFloat operator*(const bigFloat &a) const
     {
         bigFloat b = 0;
@@ -157,6 +176,7 @@ class bigFloat
     }
     bigFloat operator-(const bigFloat &a)
     {
+
         bigFloat b = ~a;
         b = b + 1;
         b = *this + b;
@@ -236,6 +256,103 @@ class bigFloat
             this->_byte[i] = b._byte[i];
         }
         this->_negative = b._negative;
+    }
+    friend bool operator>(const bigFloat &a, const bigFloat &b)
+    {
+        for (int i = 511; i >= 0; i--)
+        {
+            for (char j = 7; j >= 0; j--)
+            {
+                unsigned char mask = 1 << j;
+                unsigned char bMasked = b._byte[i] & mask;
+                unsigned char aMasked = a._byte[i] & mask;
+                bMasked = bMasked >> j;
+                aMasked = aMasked >> j;
+                if (bMasked != aMasked)
+                {
+                    if (bMasked < aMasked)
+                        return true;
+                    else
+                        return false;
+                }
+            }
+        }
+    }
+    friend bool operator<(const bigFloat &a, const bigFloat &b)
+    {
+        for (int i = 511; i >= 0; i--)
+        {
+            for (char j = 7; j >= 0; j--)
+            {
+                unsigned char mask = 1 << j;
+                unsigned char bMasked = b._byte[i] & mask;
+                unsigned char aMasked = a._byte[i] & mask;
+                bMasked = bMasked >> j;
+                aMasked = aMasked >> j;
+                if (bMasked != aMasked)
+                {
+                    if (bMasked > aMasked)
+                        return true;
+                    else
+                        return false;
+                }
+            }
+        }
+    }
+    friend bool operator<=(const bigFloat &a, const bigFloat &b)
+    {
+        for (int i = 511; i >= 0; i--)
+        {
+            for (char j = 7; j >= 0; j--)
+            {
+                unsigned char mask = 1 << j;
+                unsigned char bMasked = b._byte[i] & mask;
+                unsigned char aMasked = a._byte[i] & mask;
+                bMasked = bMasked >> j;
+                aMasked = aMasked >> j;
+                if (bMasked != aMasked)
+                {
+                    if (bMasked > aMasked)
+                        return true;
+                    else
+                        return false;
+                }
+            }
+        }
+        return true;
+    }
+    friend bool operator>=(const bigFloat &a, const bigFloat &b)
+    {
+        for (int i = 511; i >= 0; i--)
+        {
+            for (char j = 7; j >= 0; j--)
+            {
+                unsigned char mask = 1 << j;
+                unsigned char bMasked = b._byte[i] & mask;
+                unsigned char aMasked = a._byte[i] & mask;
+                bMasked = bMasked >> j;
+                aMasked = aMasked >> j;
+                if (bMasked != aMasked)
+                {
+                    if (bMasked < aMasked)
+                        return true;
+                    else
+                        return false;
+                }
+            }
+        }
+        return true;
+    }
+    friend bool operator==(const bigFloat &a, const bigFloat &b)
+    {
+        for (int i = 0; i < 512; i++)
+        {
+            if (b._byte[i] != a._byte[i])
+            {
+                return false;
+            }
+        }
+        return true;
     }
     bigFloat operator<<(const int &a) const
     {
@@ -334,11 +451,12 @@ class bigFloat
                   << std::endl;
     }
 };
-
+using namespace std;
 int main()
 {
-    bigFloat m = "10";
-    bigFloat n = "5";
+    bigFloat m = "-10.155555555555555556666842517896542321456985472352145258796325258";
+    bigFloat n = "10";
+    bigFloat f = n / m;
     m = n - m;
     bigFloat d = (char *)10;
     std::cout << "f";
