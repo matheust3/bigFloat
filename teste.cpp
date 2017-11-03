@@ -335,6 +335,6 @@ int main()
     bigFloat n = "5";
     m = n - m;
     bigFloat d = (char *)10;
-    std::cout << "d";
+    std::cout << "f";
     return 0;
 }
