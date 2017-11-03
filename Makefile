@@ -1,3 +1,3 @@
-all: teste
-teste: teste.cpp
-	g++ teste.cpp -o teste.run -lpthread -g
+all: bigfloat
+bigfloat: bigfloat.cpp
+	g++ bigfloat.cpp -o bigfloat.run -lpthread -g
