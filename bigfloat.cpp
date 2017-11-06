@@ -9,6 +9,7 @@
 class bigFloat
 {
 public:
+  bigFloat();
   bigFloat(const float &a)
   {
     for (unsigned char i = 0; i < 32; i++)
@@ -102,6 +103,9 @@ public:
   }
   bigFloat operator-(const bigFloat &a)
   {
+    bool negative = false;
+    bigFloat nA = 0;
+    bigFloat nB = 0;
     {
       //Get signal of the numbers
       unsigned char mask = 1 << 7;
@@ -109,12 +113,56 @@ public:
       thisSignal = thisSignal >> 7;
       unsigned char aSignal = mask & a._bytes[31];
       aSignal = aSignal >> 7;
-      if (thisSignal == 0 && aSignal == 0 && (a > *this))
+      if (thisSignal == 0 && aSignal == 0 && (a <= *this))
       {
+        nA = *this;
+        nB = a;
+      }
+      else if (thisSignal == 0 && aSignal == 0 && (a > *this))
+      {
+        nB = *this;
+        nA = a;
+        negative = true;
+      }
+      else if (thisSignal == 0 && aSignal == 1)
+      {
+        nA = *this;
+        nB = a;
+        unsigned char mask = 1 << 7;
+        nB._bytes[31] = nB._bytes[31] & (~mask);
+        nB = nA + nB;
+        return nB;
+      }
+      else if (thisSignal == 1 && aSignal == 0)
+      {
+        nA = *this;
+        nB = a;
+        unsigned char mask = 1 << 7;
+        nA._bytes[31] = nA._bytes[31] & (~mask);
+        nB = nA + nB;
+        nB._bytes[31] = nB._bytes[31] | mask;
+        return nB;
+      }
+      else if (thisSignal == 1 && aSignal == 1 && (a < *this))
+      {
+        nA = *this;
+        nB = a;
+        unsigned char mask = 1 << 7;
+        nA._bytes[31] = nA._bytes[31] & (~mask);
+        nB._bytes[31] = nB._bytes[31] & (~mask);
+        negative = true;
+      }
+      else if (thisSignal == 1 && aSignal == 1 && (a > *this))
+      {
+        nA = a;
+        nB = *this;
+        unsigned char mask = 1 << 7;
+        nA._bytes[31] = nA._bytes[31] & (~mask);
+        nB._bytes[31] = nB._bytes[31] & (~mask);
       }
     }
     //Get this exponent
-    long int thisExponent = 0;
+    long int nAExponent = 0;
     char eTwoCount = 0;
     for (unsigned char i = 29; i < 32; i++)
     {
@@ -125,16 +173,16 @@ public:
         if (i == 31 && j == 7)
           break;
         unsigned char mask = 1 << j;
-        unsigned char bit = this->_bytes[i] & mask;
+        unsigned char bit = nA._bytes[i] & mask;
         bit = bit >> j;
-        thisExponent += (bit * pow((int)2, (unsigned int)eTwoCount));
+        nAExponent += (bit * pow((int)2, (unsigned int)eTwoCount));
         eTwoCount++;
       }
     }
     //denormalize
-    thisExponent -= 262143;
+    nAExponent -= 262143;
     //Get exponent of the a
-    long int aExponent = 0;
+    long int nBExponent = 0;
     eTwoCount = 0;
     for (unsigned char i = 29; i < 32; i++)
     {
@@ -145,14 +193,14 @@ public:
         if (i == 31 && j == 7)
           break;
         unsigned char mask = 1 << j;
-        unsigned char bit = a._bytes[i] & mask;
+        unsigned char bit = nB._bytes[i] & mask;
         bit = bit >> j;
-        aExponent += (bit * pow((int)2, (unsigned int)eTwoCount));
+        nBExponent += (bit * pow((int)2, (unsigned int)eTwoCount));
         eTwoCount++;
       }
     }
     //- bias
-    aExponent -= 262143;
+    nBExponent -= 262143;
     //Get Mantisas
     unsigned char thisMantisa[30];
     unsigned char aMantisa[30];
@@ -171,8 +219,8 @@ public:
           else
           {
             unsigned char mask = 1 << j;
-            unsigned char thisMasked = this->_bytes[i] & mask;
-            unsigned char aMasked = a._bytes[i] & mask;
+            unsigned char thisMasked = nA._bytes[i] & mask;
+            unsigned char aMasked = nB._bytes[i] & mask;
             if (thisMasked != 0)
             {
               thisMantisa[i] = thisMantisa[i] | thisMasked;
@@ -196,8 +244,8 @@ public:
       }
       else
       {
-        thisMantisa[i] = this->_bytes[i];
-        aMantisa[i] = a._bytes[i];
+        thisMantisa[i] = nA._bytes[i];
+        aMantisa[i] = nB._bytes[i];
       }
     }
     bool bExponent = false;
@@ -208,23 +256,23 @@ public:
     unsigned char mask = 1 << 3;
     aMantisa[29] = aMantisa[29] | mask;
     thisMantisa[29] = thisMantisa[29] | mask;
-    aExponent++;
-    thisExponent++;
+    nBExponent++;
+    nAExponent++;
 
-    if (aExponent != thisExponent)
+    if (nBExponent != nAExponent)
     {
       bExponent = true;
-      if (aExponent > thisExponent)
+      if (nBExponent > nAExponent)
       {
-        int p = (aExponent - thisExponent);
+        int p = (nBExponent - nAExponent);
         RigthShiftMantisa(thisMantisa, p);
-        thisExponent = aExponent;
+        nAExponent = nBExponent;
       }
       else
       {
-        int p = (thisExponent - aExponent);
+        int p = (nAExponent - nBExponent);
         RigthShiftMantisa(aMantisa, p);
-        aExponent = thisExponent;
+        nBExponent = nAExponent;
       }
     }
     //subtract
@@ -271,12 +319,12 @@ public:
         unsigned char mask = 1 << 4;
         newMantisa[29] = newMantisa[29] | mask;
         RigthShiftMantisa(newMantisa, 1);
-        thisExponent++;
+        nAExponent++;
       }
       else if (bit == 0 && carry == 1)
       {
         RigthShiftMantisa(newMantisa, 1);
-        thisExponent++;
+        nAExponent++;
       }
       else if (bit == 0 && carry == 0)
       {
@@ -294,7 +342,7 @@ public:
             if (masked == 1)
             {
               RigthShiftMantisa(newMantisa, count);
-              thisExponent = thisExponent - count;
+              nAExponent = nAExponent - count;
               broke = true;
             }
             else
@@ -310,7 +358,7 @@ public:
       if (carry == 1)
       {
         RigthShiftMantisa(newMantisa, 1);
-        thisExponent++;
+        nAExponent++;
       }
       else
       {
@@ -331,7 +379,7 @@ public:
               //hidden 1
               masked = 1 << 4;
               newMantisa[29] = newMantisa[29] & (~masked);
-              thisExponent = thisExponent - count;
+              nAExponent = nAExponent - count;
               broke = true;
             }
             else
@@ -345,12 +393,77 @@ public:
     //Return Value
     bigFloat b = 0;
     ChangeMantisa(b, newMantisa);
-    thisExponent += 262143;
-    ChangeExponent(b, thisExponent);
+    nAExponent += 262143;
+    ChangeExponent(b, nAExponent);
+    if (negative == true)
+    {
+      unsigned char mask = 1 << 7;
+      b._bytes[31] = b._bytes[31] | mask;
+    }
     return b;
   }
   bigFloat operator+(const bigFloat &a)
   {
+    bigFloat nA = 0;
+    bigFloat nB = 0;
+    bool negative = false;
+    {
+      //Get signal of the numbers
+      unsigned char mask = 1 << 7;
+      unsigned char thisSignal = mask & this->_bytes[31];
+      thisSignal = thisSignal >> 7;
+      unsigned char aSignal = mask & a._bytes[31];
+      aSignal = aSignal >> 7;
+      if (thisSignal == 0 && aSignal == 0)
+      {
+        nA = *this;
+        nB = a;
+      }
+      else if (thisSignal == 0 && aSignal == 1 && (a < *this))
+      {
+        nA = *this;
+        nB = a;
+        unsigned char mask = 1 << 7;
+        nB._bytes[31] = nB._bytes[31] & (~mask);
+        nB = nA - nB;
+        return nB;
+      }
+      else if (thisSignal == 0 && aSignal == 1 && (a > *this))
+      {
+        nA = a;
+        nB = *this;
+        unsigned char mask = 1 << 7;
+        nA._bytes[31] = nA._bytes[31] & (~mask);
+        nB = nA - nB;
+        nB._bytes[31] = nB._bytes[31] | mask;
+        return nB;
+      }
+      else if (thisSignal == 1 && aSignal == 0 && (a < *this))
+      {
+        nA = *this;
+        nB = a;
+        unsigned char mask = 1 << 7;
+        nA._bytes[31] = nA._bytes[31] & (~mask);
+        nB = nA - nB;
+        nB._bytes[31] = nB._bytes[31] | mask;
+        return nB;
+      }
+      else if (thisSignal == 1 && aSignal == 0 && (a > *this))
+      {
+        nA = a;
+        nB = *this;
+        unsigned char mask = 1 << 7;
+        nB._bytes[31] = nB._bytes[31] & (~mask);
+        nB = nA - nB;
+        return nB;
+      }
+      else if (thisSignal == 1 && aSignal == 1)
+      {
+        nA = *this;
+        nB = a;
+        negative = true;
+      }
+    }
     //Get this exponent
     long int thisExponent = 0;
     char eTwoCount = 0;
@@ -363,7 +476,7 @@ public:
         if (i == 31 && j == 7)
           break;
         unsigned char mask = 1 << j;
-        unsigned char bit = this->_bytes[i] & mask;
+        unsigned char bit = nA._bytes[i] & mask;
         bit = bit >> j;
         thisExponent += (bit * pow((int)2, (unsigned int)eTwoCount));
         eTwoCount++;
@@ -383,7 +496,7 @@ public:
         if (i == 31 && j == 7)
           break;
         unsigned char mask = 1 << j;
-        unsigned char bit = a._bytes[i] & mask;
+        unsigned char bit = nB._bytes[i] & mask;
         bit = bit >> j;
         aExponent += (bit * pow((int)2, (unsigned int)eTwoCount));
         eTwoCount++;
@@ -409,8 +522,8 @@ public:
           else
           {
             unsigned char mask = 1 << j;
-            unsigned char thisMasked = this->_bytes[i] & mask;
-            unsigned char aMasked = a._bytes[i] & mask;
+            unsigned char thisMasked = nA._bytes[i] & mask;
+            unsigned char aMasked = nB._bytes[i] & mask;
             if (thisMasked != 0)
             {
               thisMantisa[i] = thisMantisa[i] | thisMasked;
@@ -434,8 +547,8 @@ public:
       }
       else
       {
-        thisMantisa[i] = this->_bytes[i];
-        aMantisa[i] = a._bytes[i];
+        thisMantisa[i] = nA._bytes[i];
+        aMantisa[i] = nB._bytes[i];
       }
     }
     bool bExponent = false;
@@ -524,6 +637,11 @@ public:
     ChangeMantisa(b, newMantisa);
     thisExponent += 262143;
     ChangeExponent(b, thisExponent);
+    if (negative == true)
+    {
+      unsigned char mask = 1 << 7;
+      b._bytes[31] = b._bytes[31] | mask;
+    }
     return b;
   }
   bigFloat operator=(const bigFloat &a)
@@ -532,6 +650,74 @@ public:
     {
       this->_bytes[i] = a._bytes[i];
     }
+  }
+  friend bool operator==(const bigFloat &b, const bigFloat &a)
+  {
+    //Get exponent of the a
+    long int aExponent = 0;
+    char eTwoCount = 0;
+    for (unsigned char i = 29; i < 32; i++)
+    {
+      for (unsigned char j = 0; j < 8; j++)
+      {
+        if (i == 29 && j < 4)
+          continue;
+        if (i == 31 && j == 7)
+          break;
+        unsigned char mask = 1 << j;
+        unsigned char bit = a._bytes[i] & mask;
+        bit = bit >> j;
+        aExponent += (bit * pow((int)2, (unsigned int)eTwoCount));
+        eTwoCount++;
+      }
+    }
+    //- bias
+    aExponent -= 262143;
+    //Get this exponent
+    long int bExponent = 0;
+    eTwoCount = 0;
+    for (unsigned char i = 29; i < 32; i++)
+    {
+      for (unsigned char j = 0; j < 8; j++)
+      {
+        if (i == 29 && j < 4)
+          continue;
+        if (i == 31 && j == 7)
+          break;
+        unsigned char mask = 1 << j;
+        unsigned char bit = b._bytes[i] & mask;
+        bit = bit >> j;
+        bExponent += (bit * bigFloat::pow((int)2, (unsigned int)eTwoCount));
+        eTwoCount++;
+      }
+    }
+    //denormalize
+    bExponent -= 262143;
+    if (aExponent != bExponent)
+    {
+      return false;
+    }
+    else
+    {
+      for (char i = 29; i >= 0; i--)
+      {
+        for (char j = 7; j >= 0; j--)
+        {
+          if (i == 29 && j > 3)
+            continue;
+          unsigned char mask = 1 << j;
+          unsigned char aMasked = a._bytes[i] & mask;
+          unsigned char bMasked = b._bytes[i] & mask;
+          aMasked = aMasked >> j;
+          bMasked = bMasked >> j;
+          if (aMasked != bMasked)
+          {
+            return false;
+          }
+        }
+      }
+    }
+    return true;
   }
   friend bool operator<(const bigFloat &b, const bigFloat &a)
   {
@@ -609,6 +795,82 @@ public:
     }
     return false;
   }
+  friend bool operator<=(const bigFloat &b, const bigFloat &a)
+  {
+    //Get exponent of the a
+    long int aExponent = 0;
+    char eTwoCount = 0;
+    for (unsigned char i = 29; i < 32; i++)
+    {
+      for (unsigned char j = 0; j < 8; j++)
+      {
+        if (i == 29 && j < 4)
+          continue;
+        if (i == 31 && j == 7)
+          break;
+        unsigned char mask = 1 << j;
+        unsigned char bit = a._bytes[i] & mask;
+        bit = bit >> j;
+        aExponent += (bit * pow((int)2, (unsigned int)eTwoCount));
+        eTwoCount++;
+      }
+    }
+    //- bias
+    aExponent -= 262143;
+    //Get this exponent
+    long int bExponent = 0;
+    eTwoCount = 0;
+    for (unsigned char i = 29; i < 32; i++)
+    {
+      for (unsigned char j = 0; j < 8; j++)
+      {
+        if (i == 29 && j < 4)
+          continue;
+        if (i == 31 && j == 7)
+          break;
+        unsigned char mask = 1 << j;
+        unsigned char bit = b._bytes[i] & mask;
+        bit = bit >> j;
+        bExponent += (bit * bigFloat::pow((int)2, (unsigned int)eTwoCount));
+        eTwoCount++;
+      }
+    }
+    //denormalize
+    bExponent -= 262143;
+    if (aExponent > bExponent)
+    {
+      return true;
+    }
+    else if (aExponent < bExponent)
+    {
+      return false;
+    }
+    else
+    {
+      for (char i = 29; i >= 0; i--)
+      {
+        for (char j = 7; j >= 0; j--)
+        {
+          if (i == 29 && j > 3)
+            continue;
+          unsigned char mask = 1 << j;
+          unsigned char aMasked = a._bytes[i] & mask;
+          unsigned char bMasked = b._bytes[i] & mask;
+          aMasked = aMasked >> j;
+          bMasked = bMasked >> j;
+          if (aMasked > bMasked)
+          {
+            return true;
+          }
+          else if (bMasked > aMasked)
+          {
+            return false;
+          }
+        }
+      }
+    }
+    return true;
+  }
   friend bool operator>(const bigFloat &b, const bigFloat &a)
   {
     //Get exponent of the a
@@ -684,6 +946,82 @@ public:
       }
     }
     return false;
+  }
+  friend bool operator>=(const bigFloat &b, const bigFloat &a)
+  {
+    //Get exponent of the a
+    long int aExponent = 0;
+    char eTwoCount = 0;
+    for (unsigned char i = 29; i < 32; i++)
+    {
+      for (unsigned char j = 0; j < 8; j++)
+      {
+        if (i == 29 && j < 4)
+          continue;
+        if (i == 31 && j == 7)
+          break;
+        unsigned char mask = 1 << j;
+        unsigned char bit = a._bytes[i] & mask;
+        bit = bit >> j;
+        aExponent += (bit * pow((int)2, (unsigned int)eTwoCount));
+        eTwoCount++;
+      }
+    }
+    //- bias
+    aExponent -= 262143;
+    //Get this exponent
+    long int bExponent = 0;
+    eTwoCount = 0;
+    for (unsigned char i = 29; i < 32; i++)
+    {
+      for (unsigned char j = 0; j < 8; j++)
+      {
+        if (i == 29 && j < 4)
+          continue;
+        if (i == 31 && j == 7)
+          break;
+        unsigned char mask = 1 << j;
+        unsigned char bit = b._bytes[i] & mask;
+        bit = bit >> j;
+        bExponent += (bit * bigFloat::pow((int)2, (unsigned int)eTwoCount));
+        eTwoCount++;
+      }
+    }
+    //denormalize
+    bExponent -= 262143;
+    if (aExponent > bExponent)
+    {
+      return false;
+    }
+    else if (aExponent < bExponent)
+    {
+      return true;
+    }
+    else
+    {
+      for (char i = 29; i >= 0; i--)
+      {
+        for (char j = 7; j >= 0; j--)
+        {
+          if (i == 29 && j > 3)
+            continue;
+          unsigned char mask = 1 << j;
+          unsigned char aMasked = a._bytes[i] & mask;
+          unsigned char bMasked = b._bytes[i] & mask;
+          aMasked = aMasked >> j;
+          bMasked = bMasked >> j;
+          if (aMasked > bMasked)
+          {
+            return false;
+          }
+          else if (bMasked > aMasked)
+          {
+            return true;
+          }
+        }
+      }
+    }
+    return true;
   }
   //Out value
   double out()
@@ -943,11 +1281,11 @@ private:
 using namespace std;
 int main()
 {
-  bigFloat f = 5.25;
-  bigFloat g = 3.25;
-  //bool teste = f > g;
-  f = f - g;
+  bigFloat f = -5;
+  bigFloat g = -15.25;
+  f = f + g;
   double d = f.out();
+  cout.precision(25);
   cout << d << "\n";
   return 0;
 }
