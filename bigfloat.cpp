@@ -94,11 +94,260 @@ public:
         mantisaCount--;
       }
     }
-    for (char i = 31; i >= 0; i--)
+    /*for (char i = 31; i >= 0; i--)
     {
       std::cout << std::bitset<8>(this->_bytes[i]);
     }
-    std::cout << "\n";
+    std::cout << "\n";*/
+  }
+  bigFloat operator-(const bigFloat &a)
+  {
+    {
+      //Get signal of the numbers
+      unsigned char mask = 1 << 7;
+      unsigned char thisSignal = mask & this->_bytes[31];
+      thisSignal = thisSignal >> 7;
+      unsigned char aSignal = mask & a._bytes[31];
+      aSignal = aSignal >> 7;
+      if (thisSignal == 0 && aSignal == 0 && (a > *this))
+      {
+      }
+    }
+    //Get this exponent
+    long int thisExponent = 0;
+    char eTwoCount = 0;
+    for (unsigned char i = 29; i < 32; i++)
+    {
+      for (unsigned char j = 0; j < 8; j++)
+      {
+        if (i == 29 && j < 4)
+          continue;
+        if (i == 31 && j == 7)
+          break;
+        unsigned char mask = 1 << j;
+        unsigned char bit = this->_bytes[i] & mask;
+        bit = bit >> j;
+        thisExponent += (bit * pow((int)2, (unsigned int)eTwoCount));
+        eTwoCount++;
+      }
+    }
+    //denormalize
+    thisExponent -= 262143;
+    //Get exponent of the a
+    long int aExponent = 0;
+    eTwoCount = 0;
+    for (unsigned char i = 29; i < 32; i++)
+    {
+      for (unsigned char j = 0; j < 8; j++)
+      {
+        if (i == 29 && j < 4)
+          continue;
+        if (i == 31 && j == 7)
+          break;
+        unsigned char mask = 1 << j;
+        unsigned char bit = a._bytes[i] & mask;
+        bit = bit >> j;
+        aExponent += (bit * pow((int)2, (unsigned int)eTwoCount));
+        eTwoCount++;
+      }
+    }
+    //- bias
+    aExponent -= 262143;
+    //Get Mantisas
+    unsigned char thisMantisa[30];
+    unsigned char aMantisa[30];
+    for (unsigned char i = 0; i < 30; i++)
+    {
+      if (i == 29)
+      {
+        for (unsigned char j = 0; j < 8; j++)
+        {
+          if (j > 3)
+          {
+            unsigned char mask = 1 << j;
+            thisMantisa[i] = thisMantisa[i] & (~mask);
+            aMantisa[i] = aMantisa[i] & (~mask);
+          }
+          else
+          {
+            unsigned char mask = 1 << j;
+            unsigned char thisMasked = this->_bytes[i] & mask;
+            unsigned char aMasked = a._bytes[i] & mask;
+            if (thisMasked != 0)
+            {
+              thisMantisa[i] = thisMantisa[i] | thisMasked;
+            }
+            else
+            {
+              thisMasked = 1 << j;
+              thisMantisa[i] = thisMantisa[i] & (~thisMasked);
+            }
+            if (aMasked != 0)
+            {
+              aMantisa[i] = aMantisa[i] | aMasked;
+            }
+            else
+            {
+              aMasked = 1 << j;
+              aMantisa[i] = aMantisa[i] & (~aMasked);
+            }
+          }
+        }
+      }
+      else
+      {
+        thisMantisa[i] = this->_bytes[i];
+        aMantisa[i] = a._bytes[i];
+      }
+    }
+    bool bExponent = false;
+    //Ajusta o expoente 1,01010 => 0,101010
+
+    RigthShiftMantisa(aMantisa, 1);
+    RigthShiftMantisa(thisMantisa, 1);
+    unsigned char mask = 1 << 3;
+    aMantisa[29] = aMantisa[29] | mask;
+    thisMantisa[29] = thisMantisa[29] | mask;
+    aExponent++;
+    thisExponent++;
+
+    if (aExponent != thisExponent)
+    {
+      bExponent = true;
+      if (aExponent > thisExponent)
+      {
+        int p = (aExponent - thisExponent);
+        RigthShiftMantisa(thisMantisa, p);
+        thisExponent = aExponent;
+      }
+      else
+      {
+        int p = (thisExponent - aExponent);
+        RigthShiftMantisa(aMantisa, p);
+        aExponent = thisExponent;
+      }
+    }
+    //subtract
+    unsigned char newMantisa[30];
+    unsigned char carry = 0;
+    unsigned char bit = 0;
+    for (unsigned char i = 0; i < 30; i++)
+    {
+      for (unsigned char j = 0; j < 8; j++)
+      {
+        if (i == 29 && j > 3)
+        {
+          bit = 1 << j;
+          newMantisa[i] = newMantisa[i] & (~bit);
+          continue;
+        }
+        unsigned char mask = 1 << j; //mascara
+        unsigned char thisMasked = thisMantisa[i] & mask;
+        unsigned char aMasked = aMantisa[i] & mask;
+        thisMasked = thisMasked >> j;
+        aMasked = aMasked >> j;
+        bit = (thisMasked ^ aMasked ^ carry);
+        carry = ~thisMasked & carry | ~thisMasked & aMasked | aMasked & carry;
+        if (bit == 1)
+        {
+          //put the bit into newMantisa
+          newMantisa[i] = newMantisa[i] | (bit << j);
+        }
+        else
+        {
+          bit = 1 << j;
+          //put the bit into newMantisa
+          newMantisa[i] = newMantisa[i] & (~bit);
+        }
+      }
+    }
+    if (bExponent == false)
+    {
+      //continue sum
+      bit = 1 ^ 1 ^ carry;
+      carry = 1 & carry;
+      if (bit == 1 && carry == 1)
+      {
+        unsigned char mask = 1 << 4;
+        newMantisa[29] = newMantisa[29] | mask;
+        RigthShiftMantisa(newMantisa, 1);
+        thisExponent++;
+      }
+      else if (bit == 0 && carry == 1)
+      {
+        RigthShiftMantisa(newMantisa, 1);
+        thisExponent++;
+      }
+      else if (bit == 0 && carry == 0)
+      {
+        unsigned int count = 1;
+        bool broke = false;
+        for (unsigned char i = 29; i >= 0 && broke == false; i--)
+        {
+          for (unsigned char j = 7; j >= 0 && broke == false; j--)
+          {
+            if (i == 29 && j > 3)
+              continue;
+            unsigned char mask = 1 << j;
+            unsigned char masked = newMantisa[i] & mask;
+            masked = masked >> j;
+            if (masked == 1)
+            {
+              RigthShiftMantisa(newMantisa, count);
+              thisExponent = thisExponent - count;
+              broke = true;
+            }
+            else
+            {
+              count++;
+            }
+          }
+        }
+      }
+    }
+    else
+    {
+      if (carry == 1)
+      {
+        RigthShiftMantisa(newMantisa, 1);
+        thisExponent++;
+      }
+      else
+      {
+        unsigned int count = 1;
+        bool broke = false;
+        for (unsigned char i = 29; i >= 0 && broke == false; i--)
+        {
+          for (unsigned char j = 7; j >= 0 && broke == false; j--)
+          {
+            if (i == 29 && j > 3)
+              continue;
+            unsigned char mask = 1 << j;
+            unsigned char masked = newMantisa[i] & mask;
+            masked = masked >> j;
+            if (masked == 1)
+            {
+              LeftShiftMantisa(newMantisa, count);
+              //hidden 1
+              masked = 1 << 4;
+              newMantisa[29] = newMantisa[29] & (~masked);
+              thisExponent = thisExponent - count;
+              broke = true;
+            }
+            else
+            {
+              count++;
+            }
+          }
+        }
+      }
+    }
+    //Return Value
+    bigFloat b = 0;
+    ChangeMantisa(b, newMantisa);
+    thisExponent += 262143;
+    ChangeExponent(b, thisExponent);
+    return b;
   }
   bigFloat operator+(const bigFloat &a)
   {
@@ -140,46 +389,112 @@ public:
         eTwoCount++;
       }
     }
-
     //- bias
     aExponent -= 262143;
-    if (aExponent == thisExponent)
+    //Get Mantisas
+    unsigned char thisMantisa[30];
+    unsigned char aMantisa[30];
+    for (unsigned char i = 0; i < 30; i++)
     {
-      unsigned char newMantisa[30];
-      unsigned char carry = 0;
-      unsigned char bit = 0;
-      for (unsigned char i = 0; i < 30; i++)
+      if (i == 29)
       {
         for (unsigned char j = 0; j < 8; j++)
         {
-          if (i == 29 && j > 3)
+          if (j > 3)
           {
-            bit = 1 << j;
-            newMantisa[i] = newMantisa[i] & (~bit);
+            unsigned char mask = 1 << j;
+            thisMantisa[i] = thisMantisa[i] & (~mask);
+            aMantisa[i] = aMantisa[i] & (~mask);
           }
           else
           {
-            unsigned char mask = 1 << j; //mascara
+            unsigned char mask = 1 << j;
+            unsigned char thisMasked = this->_bytes[i] & mask;
             unsigned char aMasked = a._bytes[i] & mask;
-            unsigned char tMasked = this->_bytes[i] & mask;
-            unsigned char aBit = aMasked >> j;
-            unsigned char tBit = tMasked >> j;
-            bit = ((aBit ^ tBit) ^ carry);
-            carry = ((aBit & tBit) | (aBit & carry)) | (tBit & carry);
-            if (bit == 1)
+            if (thisMasked != 0)
             {
-              //put the bit into newMantisa
-              newMantisa[i] = newMantisa[i] | (bit << j);
+              thisMantisa[i] = thisMantisa[i] | thisMasked;
             }
             else
             {
-              bit = 1 << j;
-              //put the bit into newMantisa
-              newMantisa[i] = newMantisa[i] & (~bit);
+              thisMasked = 1 << j;
+              thisMantisa[i] = thisMantisa[i] & (~thisMasked);
+            }
+            if (aMasked != 0)
+            {
+              aMantisa[i] = aMantisa[i] | aMasked;
+            }
+            else
+            {
+              aMasked = 1 << j;
+              aMantisa[i] = aMantisa[i] & (~aMasked);
             }
           }
         }
       }
+      else
+      {
+        thisMantisa[i] = this->_bytes[i];
+        aMantisa[i] = a._bytes[i];
+      }
+    }
+    bool bExponent = false;
+    if (aExponent != thisExponent)
+    {
+      bExponent = true;
+      if (aExponent > thisExponent)
+      {
+        int p = (aExponent - thisExponent);
+        unsigned char mask = 1 << 4;
+        thisMantisa[29] = thisMantisa[29] | mask;
+        RigthShiftMantisa(thisMantisa, p);
+        thisExponent = aExponent;
+      }
+      else
+      {
+        int p = (thisExponent - aExponent);
+        unsigned char mask = 1 << 4;
+        aMantisa[29] = aMantisa[29] | mask;
+        RigthShiftMantisa(aMantisa, p);
+        aExponent = thisExponent;
+      }
+    }
+    //sum
+    unsigned char newMantisa[30];
+    unsigned char carry = 0;
+    unsigned char bit = 0;
+    for (unsigned char i = 0; i < 30; i++)
+    {
+      for (unsigned char j = 0; j < 8; j++)
+      {
+        if (i == 29 && j > 3)
+        {
+          bit = 1 << j;
+          newMantisa[i] = newMantisa[i] & (~bit);
+          continue;
+        }
+        unsigned char mask = 1 << j; //mascara
+        unsigned char thisMasked = thisMantisa[i] & mask;
+        unsigned char aMasked = aMantisa[i] & mask;
+        thisMasked = thisMasked >> j;
+        aMasked = aMasked >> j;
+        bit = ((aMasked ^ thisMasked) ^ carry);
+        carry = ((aMasked & thisMasked) | (aMasked & carry)) | (thisMasked & carry);
+        if (bit == 1)
+        {
+          //put the bit into newMantisa
+          newMantisa[i] = newMantisa[i] | (bit << j);
+        }
+        else
+        {
+          bit = 1 << j;
+          //put the bit into newMantisa
+          newMantisa[i] = newMantisa[i] & (~bit);
+        }
+      }
+    }
+    if (bExponent == false)
+    {
       //continue sum
       bit = ((1 ^ 1) ^ carry);
       carry = ((1 & 1) | (1 & carry)) | (1 & carry);
@@ -195,18 +510,21 @@ public:
         RigthShiftMantisa(newMantisa, 1);
         thisExponent++;
       }
-      //Return Value
-      bigFloat b = 0;
-      ChangeMantisa(b, newMantisa);
-      thisExponent += 262143;
-      ChangeExponent(b, thisExponent);
-      for (char i = 31; i >= 0; i--)
-      {
-        std::cout << std::bitset<8>(b._bytes[i]);
-      }
-      std::cout << "\n";
-      return b;
     }
+    else
+    {
+      if (carry == 1)
+      {
+        RigthShiftMantisa(newMantisa, 1);
+        thisExponent++;
+      }
+    }
+    //Return Value
+    bigFloat b = 0;
+    ChangeMantisa(b, newMantisa);
+    thisExponent += 262143;
+    ChangeExponent(b, thisExponent);
+    return b;
   }
   bigFloat operator=(const bigFloat &a)
   {
@@ -214,6 +532,158 @@ public:
     {
       this->_bytes[i] = a._bytes[i];
     }
+  }
+  friend bool operator<(const bigFloat &b, const bigFloat &a)
+  {
+    //Get exponent of the a
+    long int aExponent = 0;
+    char eTwoCount = 0;
+    for (unsigned char i = 29; i < 32; i++)
+    {
+      for (unsigned char j = 0; j < 8; j++)
+      {
+        if (i == 29 && j < 4)
+          continue;
+        if (i == 31 && j == 7)
+          break;
+        unsigned char mask = 1 << j;
+        unsigned char bit = a._bytes[i] & mask;
+        bit = bit >> j;
+        aExponent += (bit * pow((int)2, (unsigned int)eTwoCount));
+        eTwoCount++;
+      }
+    }
+    //- bias
+    aExponent -= 262143;
+    //Get this exponent
+    long int bExponent = 0;
+    eTwoCount = 0;
+    for (unsigned char i = 29; i < 32; i++)
+    {
+      for (unsigned char j = 0; j < 8; j++)
+      {
+        if (i == 29 && j < 4)
+          continue;
+        if (i == 31 && j == 7)
+          break;
+        unsigned char mask = 1 << j;
+        unsigned char bit = b._bytes[i] & mask;
+        bit = bit >> j;
+        bExponent += (bit * bigFloat::pow((int)2, (unsigned int)eTwoCount));
+        eTwoCount++;
+      }
+    }
+    //denormalize
+    bExponent -= 262143;
+    if (aExponent > bExponent)
+    {
+      return true;
+    }
+    else if (aExponent < bExponent)
+    {
+      return false;
+    }
+    else
+    {
+      for (char i = 29; i >= 0; i--)
+      {
+        for (char j = 7; j >= 0; j--)
+        {
+          if (i == 29 && j > 3)
+            continue;
+          unsigned char mask = 1 << j;
+          unsigned char aMasked = a._bytes[i] & mask;
+          unsigned char bMasked = b._bytes[i] & mask;
+          aMasked = aMasked >> j;
+          bMasked = bMasked >> j;
+          if (aMasked > bMasked)
+          {
+            return true;
+          }
+          else if (bMasked > aMasked)
+          {
+            return false;
+          }
+        }
+      }
+    }
+    return false;
+  }
+  friend bool operator>(const bigFloat &b, const bigFloat &a)
+  {
+    //Get exponent of the a
+    long int aExponent = 0;
+    char eTwoCount = 0;
+    for (unsigned char i = 29; i < 32; i++)
+    {
+      for (unsigned char j = 0; j < 8; j++)
+      {
+        if (i == 29 && j < 4)
+          continue;
+        if (i == 31 && j == 7)
+          break;
+        unsigned char mask = 1 << j;
+        unsigned char bit = a._bytes[i] & mask;
+        bit = bit >> j;
+        aExponent += (bit * pow((int)2, (unsigned int)eTwoCount));
+        eTwoCount++;
+      }
+    }
+    //- bias
+    aExponent -= 262143;
+    //Get this exponent
+    long int bExponent = 0;
+    eTwoCount = 0;
+    for (unsigned char i = 29; i < 32; i++)
+    {
+      for (unsigned char j = 0; j < 8; j++)
+      {
+        if (i == 29 && j < 4)
+          continue;
+        if (i == 31 && j == 7)
+          break;
+        unsigned char mask = 1 << j;
+        unsigned char bit = b._bytes[i] & mask;
+        bit = bit >> j;
+        bExponent += (bit * bigFloat::pow((int)2, (unsigned int)eTwoCount));
+        eTwoCount++;
+      }
+    }
+    //denormalize
+    bExponent -= 262143;
+    if (aExponent > bExponent)
+    {
+      return false;
+    }
+    else if (aExponent < bExponent)
+    {
+      return true;
+    }
+    else
+    {
+      for (char i = 29; i >= 0; i--)
+      {
+        for (char j = 7; j >= 0; j--)
+        {
+          if (i == 29 && j > 3)
+            continue;
+          unsigned char mask = 1 << j;
+          unsigned char aMasked = a._bytes[i] & mask;
+          unsigned char bMasked = b._bytes[i] & mask;
+          aMasked = aMasked >> j;
+          bMasked = bMasked >> j;
+          if (aMasked > bMasked)
+          {
+            return false;
+          }
+          else if (bMasked > aMasked)
+          {
+            return true;
+          }
+        }
+      }
+    }
+    return false;
   }
   //Out value
   double out()
@@ -255,7 +725,7 @@ public:
         eTwoCount++;
       }
     }
-    o = (1 + mantisa) * pow((int)2, (unsigned int)exponent);
+    o = (1 + mantisa) * pow((double)2, (int)exponent);
     //signal
     unsigned char mask = 1 << 7;
     unsigned char bit = this->_bytes[31] & mask;
@@ -265,6 +735,46 @@ public:
       o *= -1;
     }
     return o;
+  }
+  //for ints
+  static long long int pow(int n, unsigned int e)
+  {
+    if (e == 0)
+    {
+      return 1;
+    }
+    long long int p = n;
+    for (int i = 1; i < e; i++)
+    {
+      p *= n;
+    }
+    return p;
+  }
+  //for floats
+  static double pow(double n, int e)
+  {
+    if (e == 0)
+    {
+      return 1;
+    }
+    else if (e > 0)
+    {
+      double p = n;
+      for (int i = 1; i < e; i++)
+      {
+        p *= n;
+      }
+      return p;
+    }
+    else
+    {
+      double p = 1 / n;
+      for (int i = 1; i < (e * -1); i++)
+      {
+        p *= 1 / n;
+      }
+      return p;
+    }
   }
 
 private:
@@ -350,46 +860,6 @@ private:
       }
     }
   }
-  //for ints
-  long long int pow(int n, unsigned int e)
-  {
-    if (e == 0)
-    {
-      return 1;
-    }
-    long long int p = n;
-    for (int i = 1; i < e; i++)
-    {
-      p *= n;
-    }
-    return p;
-  }
-  //for floats
-  double pow(double n, int e)
-  {
-    if (e == 0)
-    {
-      return 1;
-    }
-    else if (e > 0)
-    {
-      double p = n;
-      for (int i = 1; i < e; i++)
-      {
-        p *= n;
-      }
-      return p;
-    }
-    else
-    {
-      double p = 1 / n;
-      for (int i = 1; i < (e * -1); i++)
-      {
-        p *= 1 / n;
-      }
-      return p;
-    }
-  }
   //rigth shift
   void RigthShiftMantisa(unsigned char *mantisa, unsigned int a)
   {
@@ -473,9 +943,10 @@ private:
 using namespace std;
 int main()
 {
-  bigFloat f = 3.52;
-  bigFloat g = 2.25;
-  f = f + g;
+  bigFloat f = 5.25;
+  bigFloat g = 3.25;
+  //bool teste = f > g;
+  f = f - g;
   double d = f.out();
   cout << d << "\n";
   return 0;
