@@ -644,6 +644,64 @@ public:
     }
     return b;
   }
+  bigFloat operator/(const bigFloat &a)
+  {
+    bigFloat nA = *this;
+    bigFloat nB = a;
+    //Get Mantisas
+    unsigned char thisMantisa[30];
+    unsigned char aMantisa[30];
+    for (unsigned char i = 0; i < 30; i++)
+    {
+      if (i == 29)
+      {
+        for (unsigned char j = 0; j < 8; j++)
+        {
+          if (j > 3)
+          {
+            unsigned char mask = 1 << j;
+            thisMantisa[i] = thisMantisa[i] & (~mask);
+            aMantisa[i] = aMantisa[i] & (~mask);
+          }
+          else
+          {
+            unsigned char mask = 1 << j;
+            unsigned char thisMasked = nA._bytes[i] & mask;
+            unsigned char aMasked = nB._bytes[i] & mask;
+            if (thisMasked != 0)
+            {
+              thisMantisa[i] = thisMantisa[i] | thisMasked;
+            }
+            else
+            {
+              thisMasked = 1 << j;
+              thisMantisa[i] = thisMantisa[i] & (~thisMasked);
+            }
+            if (aMasked != 0)
+            {
+              aMantisa[i] = aMantisa[i] | aMasked;
+            }
+            else
+            {
+              aMasked = 1 << j;
+              aMantisa[i] = aMantisa[i] & (~aMasked);
+            }
+          }
+        }
+      }
+      else
+      {
+        thisMantisa[i] = nA._bytes[i];
+        aMantisa[i] = nB._bytes[i];
+      }
+    }
+    {
+      //put 1 in 5ºbit 00010000
+      unsigned char mask = 1 << 5;
+      nA._bytes[29] = nA._bytes[29] | mask;
+      nB._bytes[29] = nB._bytes[29] | mask;
+    }
+  }
   bigFloat operator=(const bigFloat &a)
   {
     for (unsigned char i = 0; i < 32; i++)
@@ -1276,14 +1334,15 @@ private:
       mantisa[i] = c[i];
     }
   }
+
   unsigned char _bytes[32];
 };
 using namespace std;
 int main()
 {
-  bigFloat f = -5;
-  bigFloat g = -15.25;
-  f = f + g;
+  bigFloat f = 2;
+  bigFloat g = 1;
+  f = f / g;
   double d = f.out();
   cout.precision(25);
   cout << d << "\n";
