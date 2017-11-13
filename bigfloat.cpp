@@ -648,6 +648,46 @@ public:
   {
     bigFloat nA = *this;
     bigFloat nB = a;
+    //Get this exponent
+    long int thisExponent = 0;
+    char eTwoCount = 0;
+    for (unsigned char i = 29; i < 32; i++)
+    {
+      for (unsigned char j = 0; j < 8; j++)
+      {
+        if (i == 29 && j < 4)
+          continue;
+        if (i == 31 && j == 7)
+          break;
+        unsigned char mask = 1 << j;
+        unsigned char bit = nA._bytes[i] & mask;
+        bit = bit >> j;
+        thisExponent += (bit * pow((int)2, (unsigned int)eTwoCount));
+        eTwoCount++;
+      }
+    }
+    //denormalize
+    thisExponent -= 262143;
+    //Get exponent of the a
+    long int aExponent = 0;
+    eTwoCount = 0;
+    for (unsigned char i = 29; i < 32; i++)
+    {
+      for (unsigned char j = 0; j < 8; j++)
+      {
+        if (i == 29 && j < 4)
+          continue;
+        if (i == 31 && j == 7)
+          break;
+        unsigned char mask = 1 << j;
+        unsigned char bit = nB._bytes[i] & mask;
+        bit = bit >> j;
+        aExponent += (bit * pow((int)2, (unsigned int)eTwoCount));
+        eTwoCount++;
+      }
+    }
+    //- bias
+    aExponent -= 262143;
     //Get Mantisas
     unsigned char thisMantisa[30];
     unsigned char aMantisa[30];
@@ -697,10 +737,168 @@ public:
     }
     {
       //put 1 in 5ºbit 00010000
-      unsigned char mask = 1 << 5;
-      nA._bytes[29] = nA._bytes[29] | mask;
-      nB._bytes[29] = nB._bytes[29] | mask;
+      unsigned char mask = 1 << 4;
+      thisMantisa[29] = thisMantisa[29] | mask;
+      aMantisa[29] = aMantisa[29] | mask;
     }
+    //Ajust masntisa to number 0011001000000 -> 0000000011001
+    unsigned int nSignifBits = 0;
+    for (char i = 0; i < 30; i++)
+    {
+      for (char j = 0; j < 8; j++)
+      {
+        unsigned char mask = 1 << j;
+        unsigned char thisMasked = thisMantisa[i] & mask;
+        unsigned char aMasked = aMantisa[i] & mask;
+        aMasked = aMasked >> j;
+        thisMasked = thisMasked >> j;
+        if (aMasked == 1)
+        {
+          RigthShiftMantisa(aMantisa, i * 8 + j);
+          nSignifBits = i * 8 + j;
+          break;
+        }
+      }
+      if (nSignifBits != 0)
+        break;
+    }
+    if (nSignifBits == 236)
+    {
+      thisExponent -= aExponent;
+      thisExponent += 262143;
+      ChangeExponent(nA, thisExponent);
+      return nA;
+    }
+    unsigned char newMantisa[30];
+    newMantisa[29] = 0;
+    unsigned char rest[30];
+    for (unsigned char i = 0; i < 30; i++)
+    {
+      rest[i] = thisMantisa[i];
+    }
+    RigthShiftMantisa(rest, nSignifBits);
+    //count newMantisa bitId
+    int newCount = 236;
+    //count rest bit
+    while (newCount >= 0)
+    {
+      bool tGreater = false;
+      bool same = true;
+      for (char i = 29; i >= 0 && tGreater == false; i--)
+      {
+        for (char j = 7; j >= 0 && tGreater == false; j--)
+        {
+          if (i == 29 && j > 4)
+            continue;
+          unsigned char mask = 1 << j;
+          unsigned char aMasked = aMantisa[i] & mask;
+          unsigned char restMasked = rest[i] & mask;
+          aMasked = aMasked >> j;
+          restMasked = restMasked >> j;
+          if (restMasked > aMasked)
+          {
+            tGreater = true;
+          }
+          else if (restMasked < aMasked)
+          {
+            same = false;
+          }
+          if (i == 0 && j == 0 && same)
+          {
+            tGreater = true;
+          }
+        }
+      }
+      if (tGreater)
+      {
+        //subtract rest and aMantisa
+        unsigned char carry = 0;
+        unsigned char bit = 0;
+        for (unsigned char i = 0; i < 30; i++)
+        {
+          for (unsigned char j = 0; j < 8; j++)
+          {
+            if (i == 29 && j > 4)
+            {
+              bit = 1 << j;
+              rest[i] = rest[i] & (~bit);
+              continue;
+            }
+            unsigned char mask = 1 << j; //mascara
+            unsigned char restMasked = aMantisa[i] & mask;
+            unsigned char aMasked = rest[i] & mask;
+            restMasked = restMasked >> j;
+            aMasked = aMasked >> j;
+            bit = (aMasked ^ restMasked ^ carry);
+            carry = ~aMasked & carry | ~aMasked & restMasked | restMasked & carry;
+            if (bit == 1)
+            {
+              //put the bit into newMantisa
+              rest[i] = rest[i] | (bit << j);
+            }
+            else
+            {
+              bit = 1 << j;
+              //put the bit into newMantisa
+              rest[i] = rest[i] & (~bit);
+            }
+          }
+        }
+        char bitId = newCount % 8;
+        char byteId = (newCount - bitId) / 8;
+        unsigned char mask = 1 << bitId;
+        newMantisa[byteId] = newMantisa[byteId] | mask;
+        newCount--;
+        nSignifBits--;
+        bitId = nSignifBits % 8;
+        byteId = (nSignifBits - bitId) / 8;
+        mask = 1 << bitId;
+        LeftShiftMantisa(rest, 1);
+        rest[0] = rest[0] | ((thisMantisa[byteId] & mask) >> bitId);
+      }
+      else
+      {
+        char bitId = newCount % 8;
+        char byteId = (newCount - bitId) / 8;
+        unsigned char mask = 1 << bitId;
+        newMantisa[byteId] = newMantisa[byteId] & (~mask);
+        newCount--;
+        nSignifBits--;
+        bitId = nSignifBits % 8;
+        byteId = (nSignifBits - bitId) / 8;
+        mask = 1 << bitId;
+        LeftShiftMantisa(rest, 1);
+        rest[0] = rest[0] | ((thisMantisa[byteId] & mask) >> bitId);
+      }
+    }
+    int mExponent = 1;
+    //normalize mantisa
+    for (unsigned char i = 29; i >= 0; i--)
+    {
+      for (unsigned char j = 7; j >= 0; j--)
+      {
+        if (i == 29 && j > 3)
+          continue;
+        unsigned char mask = 1 << j;
+        unsigned char masked = newMantisa[i] & mask;
+        if (masked != 0)
+        {
+          LeftShiftMantisa(newMantisa, mExponent);
+          break;
+        }
+        mExponent++;
+      }
+    }
+    //remove hidden bit
+    unsigned char mask = 1 << 5;
+    newMantisa[29] = newMantisa[29] & (~mask);
+    //newExponent
+    thisExponent -= aExponent;
+    thisExponent -= mExponent - 1;
+    thisExponent += 262143;
+    ChangeExponent(nA, thisExponent);
+    ChangeMantisa(nA, newMantisa);
+    return nA;
   }
   bigFloat operator=(const bigFloat &a)
   {
@@ -1272,7 +1470,7 @@ private:
         unsigned char mask = 1 << j;
         unsigned char masked = mask & b[i];
         unsigned char bit = masked >> j;
-        char minId = j - a;
+        int minId = j - a;
         if (minId > 0)
         {
           masked = masked >> a;
@@ -1334,14 +1532,13 @@ private:
       mantisa[i] = c[i];
     }
   }
-
   unsigned char _bytes[32];
 };
 using namespace std;
 int main()
 {
-  bigFloat f = 2;
-  bigFloat g = 1;
+  bigFloat f = 9;
+  bigFloat g = 3;
   f = f / g;
   double d = f.out();
   cout.precision(25);
