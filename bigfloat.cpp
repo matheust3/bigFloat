@@ -95,11 +95,6 @@ public:
         mantisaCount--;
       }
     }
-    /*for (char i = 31; i >= 0; i--)
-    {
-      std::cout << std::bitset<8>(this->_bytes[i]);
-    }
-    std::cout << "\n";*/
   }
   bigFloat operator-(const bigFloat &a)
   {
@@ -648,6 +643,22 @@ public:
   {
     bigFloat nA = *this;
     bigFloat nB = a;
+    //ajust sign
+    {
+      unsigned char mask = 1 << 7;
+      unsigned char abit = nA._bytes[31] & mask;
+      unsigned char bbit = nB._bytes[31] & mask;
+      abit = abit >> 7;
+      bbit = bbit >> 7;
+      if (abit == 1 && bbit == 1)
+      {
+        nA._bytes[31] = nA._bytes[31] & (~mask);
+      }
+      else if (abit == 0 && bbit == 1)
+      {
+        nA._bytes[31] = nA._bytes[31] | mask;
+      }
+    }
     //Get this exponent
     long int thisExponent = 0;
     char eTwoCount = 0;
@@ -783,7 +794,6 @@ public:
     while (newCount >= 0)
     {
       bool tGreater = false;
-      bool same = true;
       for (char i = 29; i >= 0 && tGreater == false; i--)
       {
         for (char j = 7; j >= 0 && tGreater == false; j--)
@@ -798,12 +808,13 @@ public:
           if (restMasked > aMasked)
           {
             tGreater = true;
+            break;
           }
           else if (restMasked < aMasked)
           {
-            same = false;
+            break;
           }
-          if (i == 0 && j == 0 && same)
+          if (i == 0 && j == 0)
           {
             tGreater = true;
           }
@@ -871,33 +882,35 @@ public:
         rest[0] = rest[0] | ((thisMantisa[byteId] & mask) >> bitId);
       }
     }
-    int mExponent = 1;
+    int mExponent = 0;
+    bool exbreak = false;
     //normalize mantisa
-    for (unsigned char i = 29; i >= 0; i--)
+    for (unsigned char i = 29; i >= 0 && exbreak == false; i--)
     {
       for (unsigned char j = 7; j >= 0; j--)
       {
-        if (i == 29 && j > 3)
+        if (i == 29 && j > 4)
           continue;
         unsigned char mask = 1 << j;
         unsigned char masked = newMantisa[i] & mask;
         if (masked != 0)
         {
           LeftShiftMantisa(newMantisa, mExponent);
+          exbreak = true;
           break;
         }
         mExponent++;
       }
     }
     //remove hidden bit
-    unsigned char mask = 1 << 5;
+    unsigned char mask = 1 << 4;
     newMantisa[29] = newMantisa[29] & (~mask);
     //newExponent
     thisExponent -= aExponent;
-    thisExponent -= mExponent - 1;
+    thisExponent -= mExponent;
     thisExponent += 262143;
-    ChangeExponent(nA, thisExponent);
     ChangeMantisa(nA, newMantisa);
+    ChangeExponent(nA, thisExponent);
     return nA;
   }
   bigFloat operator=(const bigFloat &a)
@@ -1537,9 +1550,9 @@ private:
 using namespace std;
 int main()
 {
-  bigFloat f = 9;
-  bigFloat g = 3;
-  f = f / g;
+  bigFloat f = 10;
+  bigFloat g = 1;
+  f = f * g;
   double d = f.out();
   cout.precision(25);
   cout << d << "\n";
