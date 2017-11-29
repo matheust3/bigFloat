@@ -181,7 +181,6 @@ public:
       }
     }
   }*/
-<<<<<<< HEAD
   static bigFloat Pi()
   {
     bigFloat pi;
@@ -219,8 +218,6 @@ public:
     pi._bytes[0] = 100;
     return pi;
   }
-=======
->>>>>>> 908ae52c0da5d30012d867d4cf15e85fdf361f61
   bigFloat operator-(const bigFloat &a)
   {
     bool negative = false;
